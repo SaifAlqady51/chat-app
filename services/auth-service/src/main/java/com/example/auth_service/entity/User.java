@@ -13,13 +13,13 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Data
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
+@Builder
 @Table(name = "users", indexes = {
-    @Index(name = "idx_users_username", columnList = "username"),
-    @Index(name = "idx_users_email", columnList = "email")
+        @Index(name = "idx_users_username", columnList = "username"),
+        @Index(name = "idx_users_email", columnList = "email")
 })
 public class User {
 
@@ -27,7 +27,7 @@ public class User {
     @GeneratedValue(strategy = GenerationType.UUID)
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "id", updatable = false, nullable = false)
-    private UUID idd;
+    private UUID id;
 
     @Column(name = "username", nullable = false, unique = true, length = 50)
     private String username;
