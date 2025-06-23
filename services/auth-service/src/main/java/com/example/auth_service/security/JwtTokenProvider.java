@@ -7,7 +7,11 @@ import java.util.function.Function;
 import javax.crypto.SecretKey;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
+
+import com.example.auth_service.repository.TokenRepository;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -29,20 +33,33 @@ public class JwtTokenProvider {
     @Value("${jwt.refreshExpiration}")
     private long refreshExpirationInMs;
 
+    private final TokenRepository tokenRepository;
+
+    public JwtTokenProvider(TokenRepository tokenRepository) {
+        this.tokenRepository = tokenRepository;
+    }
+
     private SecretKey getSigningKey() {
         return Keys.hmacShaKeyFor(secret.getBytes());
     }
 
-    public String generateToken(String username) {
-        return generateToken(username, jwtExpirationInMs);
+    public String generateToken(String email) {
+        return generateToken(email, jwtExpirationInMs);
     }
 
-    public String generateRefreshToken(String username) {
-        return generateToken(username, refreshExpirationInMs);
+    public String generateRefreshToken(String email) {
+        String refreshToken = generateToken(email, refreshExpirationInMs);
+        // Store the refresh token in Redis
+        tokenRepository.saveRefreshToken(email, refreshToken, refreshExpirationInMs);
+        return refreshToken;
     }
 
     public long getJwtExpirationInMs() {
         return jwtExpirationInMs;
+    }
+
+    public long getRefreshExpirationInMs() {
+        return refreshExpirationInMs;
     }
 
     private String generateToken(String username, long expiration) {
@@ -76,8 +93,47 @@ public class JwtTokenProvider {
                 .getPayload();
     }
 
+    public String validateRefreshToken(String token) {
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(getSigningKey())
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+
+            if (claims.getExpiration().before(new Date())) {
+                throw new ExpiredJwtException(null, claims, "Refresh token expired");
+            }
+
+            String username = claims.getSubject();
+            String storedToken = tokenRepository.getRefreshToken(username);
+
+            if (storedToken == null || !storedToken.equals(token)) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token");
+            }
+
+            return username;
+
+        } catch (ExpiredJwtException ex) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token expired");
+        } catch (SignatureException ex) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token signature");
+        } catch (MalformedJwtException ex) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token");
+        } catch (UnsupportedJwtException ex) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unsupported refresh token");
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token claims string is empty");
+        }
+    }
+
     public boolean validateToken(String token) {
         try {
+            // Check if token is blacklisted
+            if (tokenRepository.isBlacklisted(token)) {
+                return false;
+            }
+
             Jwts.parser()
                     .verifyWith(getSigningKey())
                     .build()
@@ -95,5 +151,12 @@ public class JwtTokenProvider {
             // JWT claims string is empty
         }
         return false;
+    }
+
+    public void invalidateToken(String token) {
+        long expiration = getExpirationDateFromToken(token).getTime() - System.currentTimeMillis();
+        if (expiration > 0) {
+            tokenRepository.addToBlacklist(token, expiration);
+        }
     }
 }
