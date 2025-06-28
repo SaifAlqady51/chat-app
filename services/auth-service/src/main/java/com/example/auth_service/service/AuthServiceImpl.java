@@ -73,10 +73,6 @@ public class AuthServiceImpl implements AuthService {
                         throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                                 "Service temporarily unavailable. Please try again later.");
 
-                } catch (Exception e) {
-                        throw new ResponseStatusException(
-                                HttpStatus.INTERNAL_SERVER_ERROR,
-                                "An unexpected error occurred");
                 }
         }
 
@@ -108,11 +104,6 @@ public class AuthServiceImpl implements AuthService {
                                 jwtTokenProvider.getRefreshExpirationInMs()
                         );
 
-                        tokenRepository.saveRefreshToken(
-                                user.getEmail(),
-                                refreshToken,
-                                jwtTokenProvider.getRefreshExpirationInMs()
-                        );
 
                         return AuthResponse.builder()
                                 .token(accessToken)
@@ -124,11 +115,13 @@ public class AuthServiceImpl implements AuthService {
                                 .avatarUrl(user.getAvatarUrl())
                                 .build();
                 }
+                catch (ResponseStatusException e) {
+                        // Re-throw the validation exceptions directly
+                        throw e;
+                }
                 catch (DataAccessException e) {
                         throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                                 "Service temporarily unavailable. Please try again later.");
-                } catch (ResponseStatusException e) {
-                        throw e;
                 } catch (Exception e) {
                         log.error("Unexpected error during login", e);
                         throw new ResponseStatusException(
