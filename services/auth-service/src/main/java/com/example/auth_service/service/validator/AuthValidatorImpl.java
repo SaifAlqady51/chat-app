@@ -1,4 +1,3 @@
-// AuthValidatorImpl.java
 package com.example.auth_service.service.validator;
 
 import com.example.auth_service.dto.LoginRequest;
@@ -8,11 +7,13 @@ import com.example.auth_service.entity.User;
 import com.example.auth_service.repository.UserRepository;
 import io.jsonwebtoken.security.Password;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class AuthValidatorImpl implements AuthValidator {
@@ -31,9 +32,10 @@ public class AuthValidatorImpl implements AuthValidator {
         if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password is required");
         }
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email is already in use");
+        if(userRepository.existsByEmail(request.getEmail())){
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already exists");
         }
+
     }
 
     @Override
