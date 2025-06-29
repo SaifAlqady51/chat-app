@@ -3,7 +3,7 @@ package com.example.auth_service.service;
 import java.time.Instant;
 
 import com.example.auth_service.repository.TokenRepository;
-import com.example.auth_service.service.validator.AuthValidator;
+import com.example.auth_service.service.guard.AuthGuard;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,26 +27,26 @@ public class AuthServiceImpl implements AuthService {
         private final PasswordEncoder passwordEncoder;
         private final JwtTokenProvider jwtTokenProvider;
         private final TokenRepository tokenRepository;
-        private final AuthValidator authValidator;
+        private final AuthGuard authGuard;
 
         public AuthServiceImpl(
                         UserRepository userRepository,
                         PasswordEncoder passwordEncoder,
                         JwtTokenProvider jwtTokenProvider,
                         TokenRepository tokenRepository,
-                        AuthValidator authValidator
+                        AuthGuard authGuard
         ) {
                 this.userRepository = userRepository;
                 this.passwordEncoder = passwordEncoder;
                 this.jwtTokenProvider = jwtTokenProvider;
                 this.tokenRepository = tokenRepository;
-                this.authValidator = authValidator;
+                this.authGuard = authGuard;
         }
 
         @Override
         public AuthResponse register(RegisterRequest request) {
                 try {
-                        authValidator.validateRegisterRequest(request);
+                        authGuard.checkRegistrationEligibility(request);
                         User user = User.builder()
                                 .email(request.getEmail())
                                 .passwordHash(passwordEncoder.encode(request.getPassword()))
@@ -79,7 +79,6 @@ public class AuthServiceImpl implements AuthService {
         @Override
         public AuthResponse login(LoginRequest request) {
                 try {
-                        authValidator.validateLoginRequest(request);
                         User user = userRepository.findByEmail(request.getEmail())
                                 .orElseThrow(() -> new ResponseStatusException(
                                         HttpStatus.UNAUTHORIZED,
@@ -116,7 +115,6 @@ public class AuthServiceImpl implements AuthService {
                                 .build();
                 }
                 catch (ResponseStatusException e) {
-                        // Re-throw the validation exceptions directly
                         throw e;
                 }
                 catch (DataAccessException e) {
@@ -133,7 +131,6 @@ public class AuthServiceImpl implements AuthService {
         @Override
         public AuthResponse refreshToken(RefreshTokenRequest request) {
                 try {
-                        authValidator.validateRefreshTokenRequest(request);
                         String email = jwtTokenProvider.validateRefreshToken(request.getRefreshToken().toString());
 
                         User user = userRepository.findByEmail(email)
