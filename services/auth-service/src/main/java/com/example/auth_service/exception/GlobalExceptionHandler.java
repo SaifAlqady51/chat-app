@@ -1,7 +1,7 @@
 package com.example.auth_service.exception;
 
-import com.example.auth_service.dto.ErrorResponse;
-import org.springframework.context.support.DefaultMessageSourceResolvable;
+import com.example.auth_service.dto.ApiResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -16,11 +16,12 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<ErrorResponse> handleResponseStatusException(
+    public ResponseEntity<ApiResponse<Void>> handleResponseStatusException(
             ResponseStatusException ex, WebRequest request) {
 
         // Clean the message by removing status code prefix if present
@@ -31,17 +32,17 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(ex.getStatusCode())
-                .body(ErrorResponse.builder()
+                .body(ApiResponse.<Void>builder()
                         .timestamp(LocalDateTime.now())
                         .status(ex.getStatusCode().value())
-                        .error(getErrorName(ex.getStatusCode()))
+                        .reason(getErrorName(ex.getStatusCode()))
                         .message(errorMessage)
                         .path(getRequestPath(request))
                         .build());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationExceptions(
+    public ResponseEntity<ApiResponse<Void>> handleValidationExceptions(
             MethodArgumentNotValidException ex, WebRequest request) {
 
         String errorMessage = ex.getBindingResult().getFieldErrors().stream()
@@ -51,25 +52,26 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .badRequest()
-                .body(ErrorResponse.builder()
+                .body(ApiResponse.<Void>builder()
                         .timestamp(LocalDateTime.now())
                         .status(HttpStatus.BAD_REQUEST.value())
-                        .error(getErrorName(HttpStatus.BAD_REQUEST))
+                        .reason(getErrorName(HttpStatus.BAD_REQUEST))
                         .message(errorMessage)
                         .path(getRequestPath(request))
                         .build());
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleAllExceptions(
+    public ResponseEntity<ApiResponse<Void>> handleAllExceptions(
             Exception ex, WebRequest request) {
+        log.error("Unhandled exception occurred", ex);
 
         return ResponseEntity
                 .internalServerError()
-                .body(ErrorResponse.builder()
+                .body(ApiResponse.<Void>builder()
                         .timestamp(LocalDateTime.now())
                         .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                        .error(getErrorName(HttpStatus.INTERNAL_SERVER_ERROR))
+                        .reason(getErrorName(HttpStatus.INTERNAL_SERVER_ERROR))
                         .message("Internal server error")
                         .path(getRequestPath(request))
                         .build());
