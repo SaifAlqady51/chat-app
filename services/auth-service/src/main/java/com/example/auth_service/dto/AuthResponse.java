@@ -21,9 +21,4 @@ public class AuthResponse {
     private String avatarUrl;
     private String status;
     private Instant expiresAt;
-
-    public String getEmail() {
-        return email;
-    }
-
 }
