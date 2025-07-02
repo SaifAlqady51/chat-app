@@ -1,19 +1,16 @@
 package com.example.auth_service.service;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 
+import com.example.auth_service.dto.*;
 import com.example.auth_service.repository.TokenRepository;
 import com.example.auth_service.service.guard.AuthGuard;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.example.auth_service.dto.AuthResponse;
-import com.example.auth_service.dto.LoginRequest;
-import com.example.auth_service.dto.RefreshTokenRequest;
-import com.example.auth_service.dto.RegisterRequest;
 import com.example.auth_service.entity.User;
 import com.example.auth_service.repository.UserRepository;
 import com.example.auth_service.security.JwtTokenProvider;
@@ -44,9 +41,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         @Override
-        public AuthResponse register(RegisterRequest request) {
-                try {
-                        authGuard.checkRegistrationEligibility(request);
+        public ApiResponse<AuthResponse> register(RegisterRequest request) {                        authGuard.checkRegistrationEligibility(request);
                         User user = User.builder()
                                 .email(request.getEmail())
                                 .passwordHash(passwordEncoder.encode(request.getPassword()))
@@ -59,7 +54,7 @@ public class AuthServiceImpl implements AuthService {
                         String accessToken = jwtTokenProvider.generateToken(user.getEmail());
                         String refreshToken = jwtTokenProvider.generateRefreshToken(user.getEmail());
 
-                        return AuthResponse.builder()
+                        AuthResponse authResponse =  AuthResponse.builder()
                                 .token(accessToken)
                                 .refreshToken(refreshToken)
                                 .expiresAt(Instant.now().plusMillis(jwtTokenProvider.getJwtExpirationInMs()))
@@ -68,31 +63,22 @@ public class AuthServiceImpl implements AuthService {
                                 .status(user.getStatus())
                                 .email(user.getEmail())
                                 .build();
-                }
-                catch(DataAccessException e){
-                        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                                "Service temporarily unavailable. Please try again later.");
 
-                }
+                        return ApiResponse.<AuthResponse>builder()
+                                .data(authResponse)
+                                .timestamp(LocalDateTime.now())
+                                .status(HttpStatus.CREATED.value())
+                                .reason(HttpStatus.CREATED.name())
+                                .path("api/auth/register")
+                                .message("Registration successful").build();
+
         }
 
         @Override
-        public AuthResponse login(LoginRequest request) {
-                try {
-                        User user = userRepository.findByEmail(request.getEmail())
+        public ApiResponse<AuthResponse> login(LoginRequest request) {
+                        User user = authGuard.checkLoginAndGetUser(request)
                                 .orElseThrow(() -> new ResponseStatusException(
-                                        HttpStatus.UNAUTHORIZED,
-                                        "Invalid email or password"));
-
-                        boolean credentialsValid = passwordEncoder.matches(
-                                request.getPassword(),
-                                user.getPasswordHash()) && user.getId() != null;
-
-                        if (!credentialsValid) {
-                                throw new ResponseStatusException(
-                                        HttpStatus.UNAUTHORIZED,
-                                        "Invalid email or password");
-                        }
+                                        HttpStatus.UNAUTHORIZED));
 
                         String accessToken = jwtTokenProvider.generateToken(user.getEmail());
                         String refreshToken = jwtTokenProvider.generateRefreshToken(user.getEmail());
@@ -104,7 +90,7 @@ public class AuthServiceImpl implements AuthService {
                         );
 
 
-                        return AuthResponse.builder()
+                        AuthResponse authResponse =  AuthResponse.builder()
                                 .token(accessToken)
                                 .refreshToken(refreshToken)
                                 .expiresAt(Instant.now().plusMillis(jwtTokenProvider.getJwtExpirationInMs()))
@@ -113,24 +99,19 @@ public class AuthServiceImpl implements AuthService {
                                 .username(user.getUsername())
                                 .avatarUrl(user.getAvatarUrl())
                                 .build();
-                }
-                catch (ResponseStatusException e) {
-                        throw e;
-                }
-                catch (DataAccessException e) {
-                        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                                "Service temporarily unavailable. Please try again later.");
-                } catch (Exception e) {
-                        log.error("Unexpected error during login", e);
-                        throw new ResponseStatusException(
-                                HttpStatus.INTERNAL_SERVER_ERROR,
-                                "An unexpected error occurred");
-                }
+
+                        return ApiResponse.<AuthResponse>builder()
+                                .data(authResponse)
+                                .timestamp(LocalDateTime.now())
+                                .reason(HttpStatus.OK.name())
+                                .status(HttpStatus.OK.value())
+                                .path("api/auth/login")
+                                .message("Login successful").build();
+
         }
 
         @Override
-        public AuthResponse refreshToken(RefreshTokenRequest request) {
-                try {
+        public ApiResponse<AuthResponse> refreshToken(RefreshTokenRequest request) {
                         String email = jwtTokenProvider.validateRefreshToken(request.getRefreshToken().toString());
 
                         User user = userRepository.findByEmail(email)
@@ -152,7 +133,7 @@ public class AuthServiceImpl implements AuthService {
                                 jwtTokenProvider.getRefreshExpirationInMs()
                         );
 
-                        return AuthResponse.builder()
+                        AuthResponse authResponse =  AuthResponse.builder()
                                 .token(newAccessToken)
                                 .refreshToken(newRefreshToken)
                                 .expiresAt(Instant.now().plusMillis(jwtTokenProvider.getJwtExpirationInMs()))
@@ -161,17 +142,51 @@ public class AuthServiceImpl implements AuthService {
                                 .username(user.getUsername())
                                 .status(user.getStatus())
                                 .build();
+
+                        return ApiResponse.<AuthResponse>builder()
+                                .data(authResponse)
+                                .timestamp(LocalDateTime.now())
+                                .reason(HttpStatus.OK.getReasonPhrase())
+                                .status(HttpStatus.OK.value())
+                                .path("api/auth/refresh-token")
+                                .message("Token refreshed successfully").build();
+
+        }
+
+        @Override
+        public ApiResponse<Void> logout(LogoutRequest request) {
+                String email = jwtTokenProvider.validateRefreshToken(request.getRefreshToken().toString());
+
+                // Verify user exists
+                User user = userRepository.findByEmail(email)
+                        .orElseThrow(() -> new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "User not found"));
+
+                tokenRepository.addToBlacklist(
+                        request.getToken(),
+                        jwtTokenProvider.getJwtExpirationInMs()
+                );
+
+                if (request.getRefreshToken() != null && !request.getRefreshToken().isEmpty()) {
+                        tokenRepository.addToBlacklist(
+                                request.getRefreshToken(),
+                                jwtTokenProvider.getRefreshExpirationInMs()
+                        );
                 }
-                catch (DataAccessException e) {
-                        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                                "Service temporarily unavailable. Please try again later.");
-                } catch (ResponseStatusException e) {
-                        throw e;
-                } catch (Exception e) {
-                        log.error("Unexpected error during token refresh", e);
-                        throw new ResponseStatusException(
-                                HttpStatus.INTERNAL_SERVER_ERROR,
-                                "An unexpected error occurred");
-                }
+
+                // Update user status if needed
+                user.setStatus("offline");
+                userRepository.save(user);
+
+                return ApiResponse.<Void>builder()
+                        .status(HttpStatus.OK.value())
+                        .timestamp(LocalDateTime.now())
+                        .reason(HttpStatus.OK.name())
+                        .message("Logout successful")
+                        .path("api/auth/logout")
+                        .build();
+
+
         }
 }
