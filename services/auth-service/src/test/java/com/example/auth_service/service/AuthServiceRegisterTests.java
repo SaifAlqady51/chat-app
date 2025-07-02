@@ -1,6 +1,7 @@
 package com.example.auth_service.service;
 
 import com.example.auth_service.dto.AuthResponse;
+import com.example.auth_service.dto.ApiResponse;
 import com.example.auth_service.dto.RegisterRequest;
 import com.example.auth_service.entity.User;
 import com.example.auth_service.repository.UserRepository;
@@ -61,6 +62,7 @@ class AuthServiceRegisterTests {
     }
 
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+
     @Test
     void register_WithValidRequest_ReturnsAuthResponse() {
         UUID userId = UUID.randomUUID();
@@ -79,9 +81,11 @@ class AuthServiceRegisterTests {
         when(jwtTokenProvider.getJwtExpirationInMs()).thenReturn(3600000L);
 
         // Act
-        AuthResponse response = authService.register(validRequest);
+        ApiResponse<AuthResponse> apiResponse = authService.register(validRequest);
+        AuthResponse response = apiResponse.getData();
 
         // Assert
+        assertNotNull(apiResponse);
         assertNotNull(response);
         assertEquals("accessToken", response.getToken());
         assertEquals("refreshToken", response.getRefreshToken());
@@ -89,6 +93,8 @@ class AuthServiceRegisterTests {
         assertEquals("test@example.com", response.getEmail());
         assertEquals("online", response.getStatus());
         assertTrue(response.getExpiresAt().isAfter(Instant.now()));
+        assertEquals(HttpStatus.CREATED.value(), apiResponse.getStatus());
+        assertNotNull(apiResponse.getTimestamp());
 
         verify(authGuard).checkRegistrationEligibility(validRequest);
         verify(userRepository).save(any(User.class));
@@ -110,6 +116,7 @@ class AuthServiceRegisterTests {
         verify(authGuard).checkRegistrationEligibility(validRequest);
         verifyNoInteractions(userRepository);
     }
+
     @Test
     void validRequest_ShouldPassValidation() {
         RegisterRequest request = new RegisterRequest(
@@ -159,5 +166,4 @@ class AuthServiceRegisterTests {
                 )
         );
     }
-
 }

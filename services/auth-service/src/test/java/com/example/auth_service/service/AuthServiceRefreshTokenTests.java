@@ -1,14 +1,12 @@
 package com.example.auth_service.service;
 
-import com.example.auth_service.dto.LoginRequest;
 import com.example.auth_service.dto.AuthResponse;
 import com.example.auth_service.dto.ApiResponse;
+import com.example.auth_service.dto.RefreshTokenRequest;
 import com.example.auth_service.entity.User;
 import com.example.auth_service.repository.UserRepository;
 import com.example.auth_service.repository.TokenRepository;
 import com.example.auth_service.security.JwtTokenProvider;
-import com.example.auth_service.service.guard.AuthGuard;
-import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,7 +15,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -30,13 +27,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class AuthServiceLoginTest {
+class AuthServiceRefreshTokenTests {
 
     @Mock
     private UserRepository userRepository;
-
-    @Mock
-    private PasswordEncoder passwordEncoder;
 
     @Mock
     private JwtTokenProvider jwtTokenProvider;
@@ -44,94 +38,101 @@ class AuthServiceLoginTest {
     @Mock
     private TokenRepository tokenRepository;
 
-    @Mock
-    private AuthGuard authGuard;
-
     @InjectMocks
     private AuthServiceImpl authService;
 
-    private LoginRequest validLoginRequest;
+    private RefreshTokenRequest validRefreshRequest;
     private User validUser;
 
     @BeforeEach
     void setUp() {
-        validLoginRequest = new LoginRequest("user@example.com", "password123");
+        validRefreshRequest = new RefreshTokenRequest("validRefreshToken");
         validUser = User.builder()
                 .email("user@example.com")
-                .passwordHash("encodedPassword")
                 .username("testuser")
                 .id(UUID.randomUUID())
+                .status("ACTIVE")
                 .build();
     }
 
     @Test
-    void login_Successful() {
+    void refreshToken_Successful() {
         // Arrange
-        when(authGuard.checkLoginAndGetUser(validLoginRequest))
+        when(jwtTokenProvider.validateRefreshToken(validRefreshRequest.getRefreshToken()))
+                .thenReturn(validUser.getEmail());
+        when(userRepository.findByEmail(validUser.getEmail()))
                 .thenReturn(Optional.of(validUser));
-        when(jwtTokenProvider.generateToken(validUser.getEmail())).thenReturn("accessToken");
-        when(jwtTokenProvider.generateRefreshToken(validUser.getEmail())).thenReturn("refreshToken");
+        when(jwtTokenProvider.generateToken(validUser.getEmail()))
+                .thenReturn("newAccessToken");
+        when(jwtTokenProvider.generateRefreshToken(validUser.getEmail()))
+                .thenReturn("newRefreshToken");
         when(jwtTokenProvider.getJwtExpirationInMs()).thenReturn(3600000L);
         when(jwtTokenProvider.getRefreshExpirationInMs()).thenReturn(86400000L);
 
         // Act
-        ApiResponse<AuthResponse> apiResponse = authService.login(validLoginRequest);
+        ApiResponse<AuthResponse> apiResponse = authService.refreshToken(validRefreshRequest);
         AuthResponse response = apiResponse.getData();
 
         // Assert
         assertNotNull(apiResponse);
         assertNotNull(response);
-        assertEquals("accessToken", response.getToken());
-        assertEquals("refreshToken", response.getRefreshToken());
+        assertEquals("newAccessToken", response.getToken());
+        assertEquals("newRefreshToken", response.getRefreshToken());
         assertEquals(validUser.getEmail(), response.getEmail());
         assertEquals(validUser.getId(), response.getUserId());
         assertEquals(validUser.getUsername(), response.getUsername());
-        assertEquals(validUser.getAvatarUrl(), response.getAvatarUrl());
+        assertEquals(validUser.getStatus(), response.getStatus());
         assertTrue(response.getExpiresAt().isAfter(Instant.now()));
         assertEquals(HttpStatus.OK.value(), apiResponse.getStatus());
         assertNotNull(apiResponse.getTimestamp());
 
-        verify(authGuard).checkLoginAndGetUser(validLoginRequest);
+        verify(jwtTokenProvider).validateRefreshToken(validRefreshRequest.getRefreshToken());
+        verify(userRepository).findByEmail(validUser.getEmail());
         verify(tokenRepository).saveRefreshToken(
                 validUser.getEmail(),
-                "refreshToken",
+                "newRefreshToken",
+                86400000L
+        );
+        verify(tokenRepository).addToBlacklist(
+                validRefreshRequest.getRefreshToken(),
                 86400000L
         );
     }
 
     @Test
-    void login_InvalidEmail_ThrowsUnauthorized() {
+    void refreshToken_InvalidRefreshToken_ThrowsUnauthorized() {
         // Arrange
-        LoginRequest invalidEmailRequest = new LoginRequest("nonexistent@example.com", "password123");
-        when(authGuard.checkLoginAndGetUser(invalidEmailRequest))
-                .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
+        RefreshTokenRequest invalidRequest = new RefreshTokenRequest("invalidToken");
+        when(jwtTokenProvider.validateRefreshToken(invalidRequest.getRefreshToken()))
+                .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
 
         // Act & Assert
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> authService.login(invalidEmailRequest));
+                () -> authService.refreshToken(invalidRequest));
 
         assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
-        assertEquals("401 UNAUTHORIZED \"Invalid email or password\"", exception.getMessage());
-        verify(authGuard).checkLoginAndGetUser(invalidEmailRequest);
-        verifyNoInteractions(jwtTokenProvider);
+        assertEquals("401 UNAUTHORIZED \"Invalid refresh token\"", exception.getMessage());
+        verify(jwtTokenProvider).validateRefreshToken(invalidRequest.getRefreshToken());
+        verifyNoInteractions(userRepository);
         verifyNoInteractions(tokenRepository);
     }
 
     @Test
-    void login_InvalidPassword_ThrowsUnauthorized() {
+    void refreshToken_UserNotFound_ThrowsUnauthorized() {
         // Arrange
-        LoginRequest invalidPasswordRequest = new LoginRequest("user@example.com", "wrongPassword");
-        when(authGuard.checkLoginAndGetUser(invalidPasswordRequest))
-                .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
+        when(jwtTokenProvider.validateRefreshToken(validRefreshRequest.getRefreshToken()))
+                .thenReturn("nonexistent@example.com");
+        when(userRepository.findByEmail("nonexistent@example.com"))
+                .thenReturn(Optional.empty());
 
         // Act & Assert
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> authService.login(invalidPasswordRequest));
+                () -> authService.refreshToken(validRefreshRequest));
 
         assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatusCode());
-        assertEquals("401 UNAUTHORIZED \"Invalid email or password\"", exception.getMessage());
-        verify(authGuard).checkLoginAndGetUser(invalidPasswordRequest);
-        verifyNoInteractions(jwtTokenProvider);
+        assertEquals("401 UNAUTHORIZED \"User not found\"", exception.getMessage());
+        verify(jwtTokenProvider).validateRefreshToken(validRefreshRequest.getRefreshToken());
+        verify(userRepository).findByEmail("nonexistent@example.com");
         verifyNoInteractions(tokenRepository);
     }
 
