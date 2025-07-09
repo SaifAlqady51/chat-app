@@ -12,6 +12,8 @@ import com.example.auth_service.entity.User;
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
 
+    Optional<User> findByUsername(String username);
+
     // Standard method to check if email exists
     boolean existsByEmail(String email);
 
