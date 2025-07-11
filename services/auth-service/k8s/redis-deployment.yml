@@ -15,9 +15,9 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:7-alpine  # or `redis:6-alpine` for stability
+          image: redis:7-alpine
           env:
-            - name: REDIS_PASSWORD  # (Optional) If password is enabled
+            - name: REDIS_PASSWORD
               value: "password"
           ports:
             - containerPort: 6379
@@ -26,17 +26,17 @@ spec:
               name: redis-storage
       volumes:
         - name: redis-storage
-          emptyDir: {}  # For development (not persistent)
+          emptyDir: {}
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: redis-service  # Matches `SPRING_REDIS_HOST` in ConfigMap
+  name: redis-service
 spec:
   selector:
     app: redis
   ports:
     - protocol: TCP
-      port: 6379      # Service port
-      targetPort: 6379 # Redis container port
+      port: 6379
+      targetPort: 6379
