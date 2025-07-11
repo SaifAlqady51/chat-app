@@ -19,7 +19,7 @@ spec:
           image: auth-service:latest
           imagePullPolicy: Never
           ports:
-            - containerPort: 8080
+            - containerPort: 8081
           envFrom:
             - configMapRef:
                 name: auth-service-config
@@ -33,12 +33,12 @@ spec:
           livenessProbe:
             httpGet:
               path: /actuator/health
-              port: 8080
+              port: 8081
             initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8080
+              port: 8081
             initialDelaySeconds: 20
             periodSeconds: 5
