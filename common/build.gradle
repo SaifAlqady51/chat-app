@@ -1,6 +1,5 @@
 plugins {
-	id 'java'
-	id 'org.springframework.boot' version '3.5.0'
+	id 'java-library'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -11,6 +10,7 @@ java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(21)
 	}
+	withSourcesJar()
 }
 
 configurations {
@@ -23,15 +23,31 @@ repositories {
 	mavenCentral()
 }
 
+// Import Spring Boot's dependency management without the plugin
+dependencyManagement {
+	imports {
+		mavenBom 'org.springframework.boot:spring-boot-dependencies:3.5.0'
+	}
+}
+
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	api 'org.springframework.boot:spring-boot-starter-validation'
 	compileOnly 'org.projectlombok:lombok'
-	implementation 'com.fasterxml.jackson.core:jackson-annotations:2.13.0'
+	api 'com.fasterxml.jackson.core:jackson-annotations'
+	implementation 'org.springframework.kafka:spring-kafka:3.1.2'
+	implementation 'org.apache.kafka:kafka-clients:3.6.1'
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testImplementation 'org.springframework.kafka:spring-kafka-test:3.1.2'
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+// Explicitly configure the jar task
+jar {
+	enabled = true
+	archiveClassifier = ''
 }
