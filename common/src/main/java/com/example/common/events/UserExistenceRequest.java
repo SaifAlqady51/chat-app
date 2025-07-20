@@ -1,21 +1,20 @@
 package com.example.common.events;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import java.util.UUID;
 
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class UserExistenceRequest {
     private String correlationId;
     private UUID userId;
     private String replyTopic;
 
-    public UserExistenceRequest() {
-        this.correlationId = UUID.randomUUID().toString();
-    }
-
-    public UserExistenceRequest(UUID userId, String replyTopic) {
-        this();
-        this.userId = userId;
-        this.replyTopic = replyTopic;
-    }
 
     public String getCorrelationId() {
         return correlationId;
