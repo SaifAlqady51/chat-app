@@ -1,8 +1,9 @@
 package com.example.common.constants;
-public class KafkaTopics {
+public final class KafkaTopics {
+    public static final String USER_EXISTENCE_REQUEST = "user-existence-request";
+    public static final String USER_EXISTENCE_RESPONSE = "user-existence-response";
 
-    public static final String USER_EXISTENCE_CHECK_BY_ID = "user-existence-check-by-id";
     private KafkaTopics() {
-        // Private constructor to prevent instantiation
+        throw new AssertionError("Cannot instantiate constants class");
     }
 }
