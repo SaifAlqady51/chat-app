@@ -1,10 +1,12 @@
 package com.example.conversation_service.entity;
 
 import jakarta.persistence.*;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -12,6 +14,7 @@ import java.util.UUID;
 @Table(name = "conversations")
 @Getter
 @Setter
+@Builder
 public class Conversation {
 
     @Id
@@ -27,7 +30,7 @@ public class Conversation {
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     public boolean involvesUser(UUID userId) {
         return user1Id.equals(userId) || user2Id.equals(userId);
