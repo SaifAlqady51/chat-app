@@ -15,5 +15,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  redis_data:
   postgres_data:
