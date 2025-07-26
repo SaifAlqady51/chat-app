@@ -13,6 +13,8 @@ import java.util.UUID;
 @Repository
 public interface ConversationRepository extends JpaRepository<Conversation, UUID> {
 
+    boolean existsByUser1IdAndUser2Id(UUID user1Id, UUID user2Id);
+
     @Query("""
         SELECT c FROM Conversation c 
         WHERE (c.user1Id = :user1Id AND c.user2Id = :user2Id) 
