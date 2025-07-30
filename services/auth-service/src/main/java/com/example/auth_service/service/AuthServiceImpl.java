@@ -2,6 +2,7 @@ package com.example.auth_service.service;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import com.example.auth_service.dto.*;
 import com.example.auth_service.repository.TokenRepository;
@@ -157,7 +158,6 @@ public class AuthServiceImpl implements AuthService {
         public ApiResponse<Void> logout(LogoutRequest request) {
                 String email = jwtTokenProvider.validateRefreshToken(request.getRefreshToken().toString());
 
-                // Verify user exists
                 User user = userRepository.findByEmail(email)
                         .orElseThrow(() -> new ResponseStatusException(
                                 HttpStatus.NOT_FOUND,
@@ -186,7 +186,18 @@ public class AuthServiceImpl implements AuthService {
                         .message("Logout successful")
                         .path("api/auth/logout")
                         .build();
+        }
 
-
+        @Override
+        public ApiResponse<Boolean> checkUserExistsById(UUID userId) {
+            boolean exists = userRepository.existsById(userId);
+            return ApiResponse.<Boolean>builder()
+                    .data(exists)
+                    .timestamp(LocalDateTime.now())
+                    .status(HttpStatus.OK.value())
+                    .reason(HttpStatus.OK.name())
+                    .path("api/auth/check-user-exists")
+                    .message("User existence check completed")
+                    .build();
         }
 }

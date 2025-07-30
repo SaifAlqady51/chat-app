@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.UUID;
+
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -27,6 +29,11 @@ public class AuthController {
     @PostMapping("/refresh-token")
     public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
         return ResponseEntity.ok(authService.refreshToken(request));
+    }
+
+    @GetMapping("/check-user-exists/{userId}")
+    public ResponseEntity<ApiResponse<Boolean>> checkUserExistsById(@PathVariable UUID userId) {
+        return ResponseEntity.ok(authService.checkUserExistsById(userId));
     }
 
 }

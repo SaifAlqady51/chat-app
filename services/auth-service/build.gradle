@@ -24,6 +24,7 @@ repositories {
 }
 
 dependencies {
+	implementation project(':common')
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'me.paulschwarz:spring-dotenv:4.0.0'
   	implementation 'io.jsonwebtoken:jjwt-api:0.12.5'
