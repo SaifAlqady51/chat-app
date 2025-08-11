@@ -1,44 +1,70 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: postgres
+  name: conversation-postgres
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: postgres
+      app: conversation-postgres
   template:
     metadata:
       labels:
-        app: postgres
+        app: conversation-postgres
     spec:
+      securityContext:
+        runAsUser: 999  # PostgreSQL user in container
+        fsGroup: 999    # Ensures proper file permissions
       containers:
-        - name: postgres
+        - name: postgres  # Simplified name
           image: postgres:13-alpine
+          command: ["docker-entrypoint.sh", "postgres", "-p", "5433"]  # Use entrypoint script
           env:
             - name: POSTGRES_DB
-              value: conversation_db
+              value: "conversation_db"
             - name: POSTGRES_USER
-              value: postgres
+              value: "postgres"
             - name: POSTGRES_PASSWORD
-              value: password
+              value: "password"
+            - name: PGDATA  # Explicit data directory
+              value: "/var/lib/postgresql/data/pgdata"
           ports:
-            - containerPort: 5432
+            - containerPort: 5433
           volumeMounts:
             - mountPath: /var/lib/postgresql/data
-              name: postgres-storage
+              name: postgres-data
+          readinessProbe:  # Added health checks
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+                - -p
+                - "5433"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+                - -p
+                - "5433"
+            initialDelaySeconds: 30
+            periodSeconds: 10
       volumes:
-        - name: postgres-storage
+        - name: postgres-data
           emptyDir: {}
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgres
+  name: conversation-postgres
 spec:
   selector:
-    app: postgres
+    app: conversation-postgres
   ports:
     - protocol: TCP
       port: 5433
