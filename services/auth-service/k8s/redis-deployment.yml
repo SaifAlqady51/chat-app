@@ -1,20 +1,19 @@
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: redis
+  name: auth-redis
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: redis
+      app: auth-redis
   template:
     metadata:
       labels:
-        app: redis
+        app: auth-redis
     spec:
       containers:
-        - name: redis
+        - name: auth-redis
           image: redis:7-alpine
           env:
             - name: REDIS_PASSWORD
@@ -23,19 +22,19 @@ spec:
             - containerPort: 6379
           volumeMounts:
             - mountPath: /data
-              name: redis-storage
+              name: auth-redis-storage
       volumes:
-        - name: redis-storage
+        - name: auth-redis-storage
           emptyDir: {}
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: redis-service
+  name: auth-redis
 spec:
   selector:
-    app: redis
+    app: auth-redis
   ports:
     - protocol: TCP
       port: 6379
