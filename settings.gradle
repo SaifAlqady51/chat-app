@@ -1,3 +1,4 @@
 rootProject.name = 'chat-app'
 include 'common'
 include 'services:conversation-service'
+include 'services:auth-service'
