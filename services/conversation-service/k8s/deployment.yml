@@ -5,7 +5,7 @@ metadata:
   labels:
     app: conversation-service
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: conversation-service
@@ -19,7 +19,7 @@ spec:
           image: conversation-service:latest
           imagePullPolicy: Never
           ports:
-            - containerPort: 8081
+            - containerPort: 8082
           envFrom:
             - configMapRef:
                 name: conversation-service-config
@@ -34,11 +34,11 @@ spec:
             httpGet:
               path: /actuator/health
               port: 8082
-            initialDelaySeconds: 30
+            initialDelaySeconds: 120
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /actuator/health
               port: 8082
-            initialDelaySeconds: 20
+            initialDelaySeconds: 120
             periodSeconds: 5
