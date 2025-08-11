@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: postgres
+  name: auth-postgres
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: postgres
+      app: auth-postgres
   template:
     metadata:
       labels:
-        app: postgres
+        app: auth-postgres
     spec:
       containers:
-        - name: postgres
+        - name: auth-postgres
           image: postgres:13-alpine
           env:
             - name: POSTGRES_DB
@@ -26,19 +26,19 @@ spec:
             - containerPort: 5432
           volumeMounts:
             - mountPath: /var/lib/postgresql/data
-              name: postgres-storage
+              name: auth-postgres-storage
       volumes:
-        - name: postgres-storage
+        - name: auth-postgres-storage
           emptyDir: {}
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgres
+  name: auth-postgres
 spec:
   selector:
-    app: postgres
+    app: auth-postgres
   ports:
     - protocol: TCP
       port: 5432
