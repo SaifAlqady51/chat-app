@@ -1,39 +1,51 @@
-name: Deploy PostgreSQL to EKS with IAM Role
+name: Deploy Auth PostgreSQL to EKS
 
 on:
   push:
-    branches: ['*']
+    branches: ["*"]
     paths:
-      - 'services/auth-service/k8s/postgres.deployment.yml'
+      - 'services/auth-service/k8s/postgres-deployment.yml'
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    name: Deploy Auth PostgreSQL
     permissions:
-      id-token: write
-      contents: read
+      contents: "read"
+      id-token: "write"
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-region: ${{ vars.AWS_REGION }}
-          role-to-assume: ${{ vars.AWS_IAM_ROLE_ARN }}
-          role-session-name: GitHubActions-PostgresDeploy
-          role-duration-seconds: 3600
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
 
-      - name: Configure EKS Access
+      - name: Configure EKS cluster access
         run: |
           aws eks update-kubeconfig \
-            --region ${{ vars.AWS_REGION }} \
-            --name ${{ vars.EKS_CLUSTER_NAME }} \
-            --role-arn ${{ vars.AWS_IAM_ROLE_ARN }}
+            --region ${{ secrets.AWS_REGION }} \
+            --name ${{ secrets.EKS_CLUSTER_NAME }} \
+            --role-arn ${{ secrets.AWS_IAM_ROLE_ARN }}
 
-      - name: Deploy PostgreSQL
-        run: kubectl apply -f ./services/auth-service/k8s/postgres.deployment.yml/ --server-side
+      - name: Load Auth PostgreSQL secrets
+        run: |
+          aws secretsmanager get-secret-value \
+            --secret-id ${{ secrets.AUTH_POSTGRES_SECRETS_NAME }} \
+            --query SecretString \
+            --output text | jq -r 'to_entries|map("\(.key)=\(.value)")|.[]' > auth-postgres.env
+          
+          kubectl create secret generic auth-postgres-secrets \
+            --from-env-file=auth-postgres.env \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy Auth PostgreSQL resources
+        run: |
+          kubectl apply -f services/auth-service/k8s/postgres-deployment.yml/ --server-side
+          kubectl rollout status deployment/auth-postgres --timeout=90s
