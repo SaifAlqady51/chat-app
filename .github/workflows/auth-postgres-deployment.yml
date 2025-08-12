@@ -2,7 +2,7 @@ name: Deploy PostgreSQL to EKS with IAM Role
 
 on:
   push:
-    branches: ['**']
+    branches:
     paths:
       - 'services/auth-service/k8s/postgres.deployment.yml'
 
