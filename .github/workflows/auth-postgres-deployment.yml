@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - './services/auth-service/k8s/postgres.deployment.yml'
+      - 'services/auth-service/k8s/postgres.deployment.yml'
 
 jobs:
   deploy:
