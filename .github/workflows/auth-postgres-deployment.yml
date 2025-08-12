@@ -15,6 +15,7 @@ jobs:
       contents: "read"
       id-token: "write"
     runs-on: ubuntu-latest
+    environment: secrets
 
     steps:
       - name: Checkout repo
