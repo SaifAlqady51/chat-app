@@ -1,0 +1,39 @@
+name: Deploy PostgreSQL to EKS with IAM Role
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - './services/auth-service/k8s/postgres.deployment.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_IAM_ROLE_ARN }}
+          role-session-name: GitHubActions-PostgresDeploy
+          role-duration-seconds: 3600
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure EKS Access
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ vars.AWS_REGION }} \
+            --name ${{ vars.EKS_CLUSTER_NAME }} \
+            --role-arn ${{ vars.AWS_IAM_ROLE_ARN }}
+
+      - name: Deploy PostgreSQL
+        run: kubectl apply -f k8s/postgres/ --server-side
