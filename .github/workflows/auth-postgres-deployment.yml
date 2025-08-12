@@ -47,5 +47,5 @@ jobs:
 
       - name: Deploy Auth PostgreSQL resources
         run: |
-          kubectl apply -f services/auth-service/k8s/postgres-deployment.yml/ --server-side
+          kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
           kubectl rollout status deployment/auth-postgres --timeout=90s
