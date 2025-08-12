@@ -2,9 +2,7 @@ name: Deploy PostgreSQL to EKS with IAM Role
 
 on:
   push:
-    branches:
-      - main
-      - "deploy/create-github-actions"
+    branches: ['*']
     paths:
       - 'services/auth-service/k8s/postgres.deployment.yml'
 
@@ -38,4 +36,4 @@ jobs:
             --role-arn ${{ vars.AWS_IAM_ROLE_ARN }}
 
       - name: Deploy PostgreSQL
-        run: kubectl apply -f k8s/postgres/ --server-side
+        run: kubectl apply -f ./servcies/auth-service/k8s/postgres/ --server-side
