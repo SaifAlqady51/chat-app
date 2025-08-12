@@ -36,4 +36,4 @@ jobs:
             --role-arn ${{ vars.AWS_IAM_ROLE_ARN }}
 
       - name: Deploy PostgreSQL
-        run: kubectl apply -f ./servcies/auth-service/k8s/postgres/ --server-side
+        run: kubectl apply -f ./servcies/auth-service/k8s/postgres.deployment.yml/ --server-side
