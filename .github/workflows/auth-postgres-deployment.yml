@@ -37,17 +37,6 @@ jobs:
             --name ${{ secrets.EKS_CLUSTER_NAME }} \
             --role-arn ${{ secrets.AWS_IAM_ROLE_ARN }}
 
-      - name: Load Auth PostgreSQL secrets
-        run: |
-          aws secretsmanager get-secret-value \
-            --secret-id ${{ secrets.AUTH_POSTGRES_SECRETS_NAME }} \
-            --query SecretString \
-            --output text | jq -r 'to_entries|map("\(.key)=\(.value)")|.[]' > auth-postgres.env
-          
-          kubectl create secret generic auth-postgres-secrets \
-            --from-env-file=auth-postgres.env \
-            --dry-run=client -o yaml | kubectl apply -f -
-
       - name: Deploy Auth PostgreSQL resources
         run: |
           kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
