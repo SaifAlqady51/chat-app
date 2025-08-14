@@ -26,6 +26,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: github-actions-deploy
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
@@ -36,6 +37,9 @@ jobs:
             --region ${{ secrets.AWS_REGION }} \
             --name ${{ secrets.EKS_CLUSTER_NAME }} \
             --role-arn ${{ secrets.AWS_IAM_ROLE_ARN }}
+
+      - name: Verify kubectl access
+        run: kubectl auth can-i create deployments --namespace default
 
       - name: Deploy Auth PostgreSQL resources
         run: |
