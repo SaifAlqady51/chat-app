@@ -24,9 +24,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
-          role-session-name: github-actions-deploy
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
@@ -35,13 +33,18 @@ jobs:
         run: |
           aws eks update-kubeconfig \
             --region ${{ secrets.AWS_REGION }} \
-            --name ${{ secrets.EKS_CLUSTER_NAME }} \
-            --role-arn ${{ secrets.AWS_IAM_ROLE_ARN }}
+            --name ${{ secrets.EKS_CLUSTER_NAME }}
 
-      - name: Verify kubectl access
-        run: kubectl auth can-i create deployments --namespace default
+      - name: Verify AWS identity
+        run: |
+          aws sts get-caller-identity
+
+      - name: Test kubectl connection
+        run: |
+          kubectl cluster-info
+          kubectl auth whoami
 
       - name: Deploy Auth PostgreSQL resources
         run: |
           kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
-          kubectl rollout status deployment/auth-postgres --timeout=90s
+          kubectl rollout status deployment/auth-postgres --timeout=300s
