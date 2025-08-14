@@ -13,26 +13,31 @@ metadata:
   name: github-actions-role
 rules:
   - apiGroups: [""]
-    resources: ["services", "configmaps", "secrets"]
+    resources: ["services", "pods", "configmaps", "secrets", "persistentvolumeclaims"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["apps"]
-    resources: ["deployments", "replicasets"]
+    resources: ["deployments", "replicasets", "statefulsets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["apps"]
-    resources: ["deployments/status"]
-    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["extensions", "networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
-  name: github-actions-binding
-  namespace: default
+  name: github-actions-cluster-binding
 subjects:
+  - kind: ServiceAccount
+    name: github-actions-sa
+    namespace: default
   - kind: User
-    name: github-actions
+    name: system:node:EKSGetTokenAuth  # Matches the user in your error
     apiGroup: rbac.authorization.k8s.io
 roleRef:
-  kind: Role
-  name: github-actions-role
+  kind: ClusterRole
+  name: edit  # Using built-in edit cluster role
   apiGroup: rbac.authorization.k8s.io
