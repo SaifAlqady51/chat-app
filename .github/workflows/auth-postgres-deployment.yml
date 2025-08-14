@@ -21,6 +21,12 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
 
@@ -28,17 +34,81 @@ jobs:
         run: |
           aws eks update-kubeconfig \
             --region ${{ secrets.AWS_REGION }} \
-            --name ${{ secrets.EKS_CLUSTER_NAME }}
-          # Remove --role-arn parameter
+            --name ${{ secrets.EKS_CLUSTER_NAME }} \
+            --role-arn ${{ secrets.AWS_IAM_ROLE_ARN }}
 
-      - name: Verify AWS identity
+      - name: Setup RBAC for GitHub Actions
         run: |
-          aws sts get-caller-identity
+          # Create RBAC resources if they don't exist
+          kubectl apply -f - <<EOF
+          ---
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: github-actions-sa
+            namespace: default
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: Role
+          metadata:
+            namespace: default
+            name: github-actions-role
+          rules:
+          - apiGroups: [""]
+            resources: ["services", "configmaps", "secrets"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+          - apiGroups: ["apps"]
+            resources: ["deployments", "replicasets"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+          - apiGroups: ["apps"]
+            resources: ["deployments/status"]
+            verbs: ["get", "list", "watch"]
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: RoleBinding
+          metadata:
+            name: github-actions-binding
+            namespace: default
+          subjects:
+          - kind: User
+            name: github-actions
+            apiGroup: rbac.authorization.k8s.io
+          roleRef:
+            kind: Role
+            name: github-actions-role
+            apiGroup: rbac.authorization.k8s.io
+          EOF
 
-      - name: Test kubectl connection
+      - name: Update aws-auth ConfigMap
         run: |
-          kubectl cluster-info
-          kubectl auth whoami
+          # Get current aws-auth ConfigMap
+          kubectl get configmap aws-auth -n kube-system -o yaml > /tmp/aws-auth.yaml
+          
+          # Check if our role mapping already exists
+          if ! grep -q "github-actions" /tmp/aws-auth.yaml; then
+            echo "Adding IAM role mapping to aws-auth ConfigMap"
+          
+            # Create a patch for aws-auth ConfigMap
+            kubectl patch configmap aws-auth -n kube-system --patch "
+            data:
+              mapRoles: |
+                $(kubectl get configmap aws-auth -n kube-system -o jsonpath='{.data.mapRoles}')
+                - rolearn: ${{ secrets.AWS_IAM_ROLE_ARN }}
+                  username: github-actions
+                  groups:
+                    - github-actions-group
+            "
+          else
+            echo "IAM role mapping already exists in aws-auth ConfigMap"
+          fi
+
+      - name: Verify kubectl authentication
+        run: |
+          echo "Current user:"
+          kubectl auth whoami || true
+          echo "Testing permissions:"
+          kubectl auth can-i create deployments || true
+          kubectl auth can-i create services || true
 
       - name: Deploy Auth PostgreSQL resources
         run: |
