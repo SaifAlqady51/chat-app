@@ -24,6 +24,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
+          # Don't assume another role, use the OIDC role directly
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Setup kubectl
@@ -34,6 +35,7 @@ jobs:
           aws eks update-kubeconfig \
             --region ${{ secrets.AWS_REGION }} \
             --name ${{ secrets.EKS_CLUSTER_NAME }}
+          # Remove --role-arn parameter
 
       - name: Verify AWS identity
         run: |
