@@ -24,6 +24,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
+          role-to-assume: ${{ secrets.CHAT_APP_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Setup kubectl
