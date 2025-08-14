@@ -5,6 +5,7 @@ on:
     branches: ["*"]
     paths:
       - 'services/auth-service/k8s/postgres-deployment.yml'
+      - 'services/auth-service/k8s/rbac.yml'
   workflow_dispatch:
   pull_request:
 
@@ -37,78 +38,32 @@ jobs:
             --name ${{ secrets.EKS_CLUSTER_NAME }} \
             --role-arn ${{ secrets.AWS_IAM_ROLE_ARN }}
 
-      - name: Setup RBAC for GitHub Actions
+      - name: Setup RBAC (one-time setup)
         run: |
-          # Create RBAC resources if they don't exist
-          kubectl apply -f - <<EOF
-          ---
-          apiVersion: v1
-          kind: ServiceAccount
-          metadata:
-            name: github-actions-sa
-            namespace: default
-          ---
-          apiVersion: rbac.authorization.k8s.io/v1
-          kind: Role
-          metadata:
-            namespace: default
-            name: github-actions-role
-          rules:
-          - apiGroups: [""]
-            resources: ["services", "configmaps", "secrets"]
-            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-          - apiGroups: ["apps"]
-            resources: ["deployments", "replicasets"]
-            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-          - apiGroups: ["apps"]
-            resources: ["deployments/status"]
-            verbs: ["get", "list", "watch"]
-          ---
-          apiVersion: rbac.authorization.k8s.io/v1
-          kind: RoleBinding
-          metadata:
-            name: github-actions-binding
-            namespace: default
-          subjects:
-          - kind: User
-            name: github-actions
-            apiGroup: rbac.authorization.k8s.io
-          roleRef:
-            kind: Role
-            name: github-actions-role
-            apiGroup: rbac.authorization.k8s.io
-          EOF
+          kubectl apply -f services/auth-service/k8s/rbac.yml
+        continue-on-error: true  # In case RBAC already exists
 
-      - name: Update aws-auth ConfigMap
+      - name: Update aws-auth ConfigMap (one-time setup)
         run: |
-          # Get current aws-auth ConfigMap
-          kubectl get configmap aws-auth -n kube-system -o yaml > /tmp/aws-auth.yaml
-          
           # Check if our role mapping already exists
-          if ! grep -q "github-actions" /tmp/aws-auth.yaml; then
+          if ! kubectl get configmap aws-auth -n kube-system -o yaml | grep -q "github-actions"; then
             echo "Adding IAM role mapping to aws-auth ConfigMap"
-          
-            # Create a patch for aws-auth ConfigMap
-            kubectl patch configmap aws-auth -n kube-system --patch "
-            data:
-              mapRoles: |
-                $(kubectl get configmap aws-auth -n kube-system -o jsonpath='{.data.mapRoles}')
-                - rolearn: ${{ secrets.AWS_IAM_ROLE_ARN }}
-                  username: github-actions
-                  groups:
-                    - github-actions-group
-            "
+            kubectl patch configmap aws-auth -n kube-system --type merge -p "
+            {
+              \"data\": {
+                \"mapRoles\": \"$(kubectl get configmap aws-auth -n kube-system -o jsonpath='{.data.mapRoles}')- rolearn: ${{ secrets.AWS_IAM_ROLE_ARN }}\n  username: github-actions\n  groups:\n    - github-actions-group\n\"
+              }
+            }"
           else
-            echo "IAM role mapping already exists in aws-auth ConfigMap"
+            echo "IAM role mapping already exists"
           fi
+        continue-on-error: true  # In case ConfigMap update fails
 
       - name: Verify kubectl authentication
         run: |
-          echo "Current user:"
-          kubectl auth whoami || true
-          echo "Testing permissions:"
-          kubectl auth can-i create deployments || true
-          kubectl auth can-i create services || true
+          kubectl auth whoami
+          kubectl auth can-i create deployments
+          kubectl auth can-i create services
 
       - name: Deploy Auth PostgreSQL resources
         run: |
