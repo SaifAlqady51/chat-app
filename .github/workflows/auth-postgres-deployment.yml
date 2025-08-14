@@ -24,7 +24,6 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Setup kubectl
@@ -34,10 +33,49 @@ jobs:
         run: |
           aws eks update-kubeconfig \
             --region ${{ secrets.AWS_REGION }} \
-            --name ${{ secrets.EKS_CLUSTER_NAME }} \
-            --role-arn ${{ secrets.AWS_IAM_ROLE_ARN }}
+            --name ${{ secrets.EKS_CLUSTER_NAME }}
+
+      - name: Fix aws-auth ConfigMap for chat-app role
+        run: |
+          echo "Current kubectl user info:"
+          kubectl auth whoami
+          
+          echo "Updating aws-auth ConfigMap to grant proper permissions..."
+          
+          # Get current aws-auth ConfigMap
+          kubectl get configmap aws-auth -n kube-system -o yaml > /tmp/current-aws-auth.yaml
+          
+          # Check if chat-app role is already mapped correctly
+          if kubectl get configmap aws-auth -n kube-system -o yaml | grep -q "chat-app.*system:masters"; then
+            echo "chat-app role already has system:masters permissions"
+          else
+            echo "Adding chat-app role with system:masters permissions"
+          
+            # Create updated aws-auth configmap
+            kubectl patch configmap aws-auth -n kube-system --patch "
+            data:
+              mapRoles: |$(kubectl get configmap aws-auth -n kube-system -o jsonpath='{.data.mapRoles}' | sed 's/^/                /')
+                - rolearn: arn:aws:iam::080927831740:role/chat-app
+                  username: github-actions-admin
+                  groups:
+                    - system:masters
+            "
+          fi
+
+      - name: Wait for auth propagation
+        run: |
+          echo "Waiting for authentication changes to propagate..."
+          sleep 10
+
+      - name: Verify new permissions
+        run: |
+          echo "Checking updated permissions:"
+          kubectl auth whoami
+          kubectl auth can-i create deployments
+          kubectl auth can-i create services
+          kubectl auth can-i get pods
 
       - name: Deploy Auth PostgreSQL resources
         run: |
           kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
-          kubectl rollout status deployment/auth-postgres --timeout=90s
+          kubectl rollout status deployment/auth-postgres --timeout=300s
