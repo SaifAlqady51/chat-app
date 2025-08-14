@@ -1,16 +1,11 @@
-name: Deploy Auth PostgreSQL to EKS
+name: Debug AWS Credentials
 
 on:
-  push:
-    branches: ["*"]
-    paths:
-      - 'services/auth-service/k8s/postgres-deployment.yml'
   workflow_dispatch:
-  pull_request:
 
 jobs:
-  deploy:
-    name: Deploy Auth PostgreSQL
+  debug:
+    name: Debug Credentials
     permissions:
       contents: "read"
       id-token: "write"
@@ -18,64 +13,59 @@ jobs:
     environment: secrets
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v4
-
-      - name: Configure EKS cluster access
+      - name: Check environment and secrets
         run: |
-          aws eks update-kubeconfig \
-            --region ${{ secrets.AWS_REGION }} \
-            --name ${{ secrets.EKS_CLUSTER_NAME }}
+          echo "GitHub Repository: ${{ github.repository }}"
+          echo "GitHub Ref: ${{ github.ref }}"
+          echo "GitHub Event: ${{ github.event_name }}"
+          echo "AWS Region secret exists: ${{ secrets.AWS_REGION != '' }}"
+          echo "AWS IAM Role ARN secret exists: ${{ secrets.AWS_IAM_ROLE_ARN != '' }}"
+          echo "EKS Cluster Name secret exists: ${{ secrets.EKS_CLUSTER_NAME != '' }}"
 
-      - name: Fix aws-auth ConfigMap for chat-app role
+      - name: Test OIDC token availability
         run: |
-          echo "Current kubectl user info:"
-          kubectl auth whoami
-          
-          echo "Updating aws-auth ConfigMap to grant proper permissions..."
-          
-          # Get current aws-auth ConfigMap
-          kubectl get configmap aws-auth -n kube-system -o yaml > /tmp/current-aws-auth.yaml
-          
-          # Check if chat-app role is already mapped correctly
-          if kubectl get configmap aws-auth -n kube-system -o yaml | grep -q "chat-app.*system:masters"; then
-            echo "chat-app role already has system:masters permissions"
+          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+            echo "OIDC token request token is available"
           else
-            echo "Adding chat-app role with system:masters permissions"
-          
-            # Create updated aws-auth configmap
-            kubectl patch configmap aws-auth -n kube-system --patch "
-            data:
-              mapRoles: |$(kubectl get configmap aws-auth -n kube-system -o jsonpath='{.data.mapRoles}' | sed 's/^/                /')
-                - rolearn: arn:aws:iam::080927831740:role/chat-app
-                  username: github-actions-admin
-                  groups:
-                    - system:masters
-            "
+            echo "OIDC token request token is NOT available"
+          fi
+          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "OIDC token request URL is available"
+          else
+            echo "OIDC token request URL is NOT available"
           fi
 
-      - name: Wait for auth propagation
-        run: |
-          echo "Waiting for authentication changes to propagate..."
-          sleep 10
+      - name: Try original AWS_IAM_ROLE_ARN
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+        continue-on-error: true
+        id: try-original
 
-      - name: Verify new permissions
+      - name: Check if original role worked
+        if: steps.try-original.outcome == 'success'
         run: |
-          echo "Checking updated permissions:"
-          kubectl auth whoami
-          kubectl auth can-i create deployments
-          kubectl auth can-i create services
-          kubectl auth can-i get pods
+          echo "✅ Original role assumption worked!"
+          aws sts get-caller-identity
 
-      - name: Deploy Auth PostgreSQL resources
+      - name: Try chat-app role directly (if original failed)
+        if: steps.try-original.outcome == 'failure'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::080927831740:role/chat-app
+          aws-region: ${{ secrets.AWS_REGION }}
+        continue-on-error: true
+        id: try-chat-app
+
+      - name: Check if chat-app role worked
+        if: steps.try-chat-app.outcome == 'success'
         run: |
-          kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
-          kubectl rollout status deployment/auth-postgres --timeout=300s
+          echo "✅ chat-app role assumption worked!"
+          aws sts get-caller-identity
+
+      - name: Summary
+        run: |
+          echo "=== RESULTS ==="
+          echo "Original role (${{ secrets.AWS_IAM_ROLE_ARN }}): ${{ steps.try-original.outcome }}"
+          echo "chat-app role (arn:aws:iam::080927831740:role/chat-app): ${{ steps.try-chat-app.outcome }}"
