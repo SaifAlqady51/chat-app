@@ -21,12 +21,6 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          # Don't assume another role, use the OIDC role directly
-          aws-region: ${{ secrets.AWS_REGION }}
-
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
 
