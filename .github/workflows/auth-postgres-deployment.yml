@@ -38,32 +38,15 @@ jobs:
             --name ${{ secrets.EKS_CLUSTER_NAME }} \
             --role-arn ${{ secrets.AWS_IAM_ROLE_ARN }}
 
-      - name: Setup RBAC (one-time setup)
+      - name: Setup RBAC
         run: |
           kubectl apply -f services/auth-service/k8s/rbac.yml
-        continue-on-error: true  # In case RBAC already exists
-
-      - name: Update aws-auth ConfigMap (one-time setup)
-        run: |
-          # Check if our role mapping already exists
-          if ! kubectl get configmap aws-auth -n kube-system -o yaml | grep -q "github-actions"; then
-            echo "Adding IAM role mapping to aws-auth ConfigMap"
-            kubectl patch configmap aws-auth -n kube-system --type merge -p "
-            {
-              \"data\": {
-                \"mapRoles\": \"$(kubectl get configmap aws-auth -n kube-system -o jsonpath='{.data.mapRoles}')- rolearn: ${{ secrets.AWS_IAM_ROLE_ARN }}\n  username: github-actions\n  groups:\n    - github-actions-group\n\"
-              }
-            }"
-          else
-            echo "IAM role mapping already exists"
-          fi
-        continue-on-error: true  # In case ConfigMap update fails
+        continue-on-error: true
 
       - name: Verify kubectl authentication
         run: |
           kubectl auth whoami
-          kubectl auth can-i create deployments
-          kubectl auth can-i create services
+          kubectl get nodes
 
       - name: Deploy Auth PostgreSQL resources
         run: |

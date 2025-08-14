@@ -1,4 +1,3 @@
----
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -7,35 +6,12 @@ metadata:
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  namespace: default
-  name: github-actions-role
-rules:
-  - apiGroups: [""]
-    resources: ["services", "pods", "configmaps", "secrets", "persistentvolumeclaims"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["apps"]
-    resources: ["deployments", "replicasets", "statefulsets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["batch"]
-    resources: ["jobs", "cronjobs"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["extensions", "networking.k8s.io"]
-    resources: ["ingresses"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
----
-apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: github-actions-cluster-binding
 subjects:
-  - kind: ServiceAccount
-    name: github-actions-sa
-    namespace: default
   - kind: User
-    name: system:node:EKSGetTokenAuth  # Matches the user in your error
+    name: system:node:EKSGetTokenAuth  # Matches the user in your output
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
