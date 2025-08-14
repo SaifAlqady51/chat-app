@@ -5,7 +5,6 @@ on:
     branches: ["*"]
     paths:
       - 'services/auth-service/k8s/postgres-deployment.yml'
-      - 'services/auth-service/k8s/rbac.yml'
   workflow_dispatch:
   pull_request:
 
@@ -25,7 +24,6 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Setup kubectl
@@ -35,35 +33,47 @@ jobs:
         run: |
           aws eks update-kubeconfig \
             --region ${{ secrets.AWS_REGION }} \
-            --name ${{ secrets.EKS_CLUSTER_NAME }} \
-            --role-arn ${{ secrets.AWS_IAM_ROLE_ARN }}
+            --name ${{ secrets.EKS_CLUSTER_NAME }}
 
-      - name: Setup RBAC (one-time setup)
+      - name: Fix aws-auth ConfigMap for chat-app role
         run: |
-          kubectl apply -f services/auth-service/k8s/rbac.yml
-        continue-on-error: true  # In case RBAC already exists
-
-      - name: Update aws-auth ConfigMap (one-time setup)
-        run: |
-          # Check if our role mapping already exists
-          if ! kubectl get configmap aws-auth -n kube-system -o yaml | grep -q "github-actions"; then
-            echo "Adding IAM role mapping to aws-auth ConfigMap"
-            kubectl patch configmap aws-auth -n kube-system --type merge -p "
-            {
-              \"data\": {
-                \"mapRoles\": \"$(kubectl get configmap aws-auth -n kube-system -o jsonpath='{.data.mapRoles}')- rolearn: ${{ secrets.AWS_IAM_ROLE_ARN }}\n  username: github-actions\n  groups:\n    - github-actions-group\n\"
-              }
-            }"
+          echo "Current kubectl user info:"
+          kubectl auth whoami
+          
+          echo "Updating aws-auth ConfigMap to grant proper permissions..."
+          
+          # Get current aws-auth ConfigMap
+          kubectl get configmap aws-auth -n kube-system -o yaml > /tmp/current-aws-auth.yaml
+          
+          # Check if chat-app role is already mapped correctly
+          if kubectl get configmap aws-auth -n kube-system -o yaml | grep -q "chat-app.*system:masters"; then
+            echo "chat-app role already has system:masters permissions"
           else
-            echo "IAM role mapping already exists"
+            echo "Adding chat-app role with system:masters permissions"
+          
+            # Create updated aws-auth configmap
+            kubectl patch configmap aws-auth -n kube-system --patch "
+            data:
+              mapRoles: |$(kubectl get configmap aws-auth -n kube-system -o jsonpath='{.data.mapRoles}' | sed 's/^/                /')
+                - rolearn: arn:aws:iam::080927831740:role/chat-app
+                  username: github-actions-admin
+                  groups:
+                    - system:masters
+            "
           fi
-        continue-on-error: true  # In case ConfigMap update fails
 
-      - name: Verify kubectl authentication
+      - name: Wait for auth propagation
         run: |
+          echo "Waiting for authentication changes to propagate..."
+          sleep 10
+
+      - name: Verify new permissions
+        run: |
+          echo "Checking updated permissions:"
           kubectl auth whoami
           kubectl auth can-i create deployments
           kubectl auth can-i create services
+          kubectl auth can-i get pods
 
       - name: Deploy Auth PostgreSQL resources
         run: |
