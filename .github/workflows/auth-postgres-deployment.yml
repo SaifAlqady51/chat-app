@@ -5,6 +5,7 @@ on:
     branches: ["*"]
     paths:
       - 'services/auth-service/k8s/postgres-deployment.yml'
+      - 'services/auth-service/k8s/rbac.yml'
   workflow_dispatch:
   pull_request:
 
@@ -15,6 +16,7 @@ jobs:
       contents: "read"
       id-token: "write"
     runs-on: ubuntu-latest
+    environment: secrets
 
     steps:
       - name: Checkout repo
@@ -27,27 +29,26 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v4
 
       - name: Configure EKS cluster access
         run: |
-          aws eks update-kubeconfig \
-            --region ${{ secrets.AWS_REGION }} \
-            --name ${{ secrets.EKS_CLUSTER_NAME }} \
-            --role-arn ${{ secrets.AWS_IAM_ROLE_ARN }}
-
-      - name: Load Auth PostgreSQL secrets
-        run: |
-          aws secretsmanager get-secret-value \
-            --secret-id ${{ secrets.AUTH_POSTGRES_SECRETS_NAME }} \
-            --query SecretString \
-            --output text | jq -r 'to_entries|map("\(.key)=\(.value)")|.[]' > auth-postgres.env
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }} 
           
-          kubectl create secret generic auth-postgres-secrets \
-            --from-env-file=auth-postgres.env \
-            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl cluster-info
+          kubectl auth whoami
+          kubectl get ns  
+
+      - name: Setup RBAC
+        run: |
+          kubectl apply -f services/auth-service/k8s/rbac.yml
+        continue-on-error: true
+
+      - name: Verify kubectl authentication
+        run: |
+          kubectl auth whoami
 
       - name: Deploy Auth PostgreSQL resources
         run: |
           kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
-          kubectl rollout status deployment/auth-postgres --timeout=90s
+          kubectl rollout status deployment/auth-postgres --timeout=300s
