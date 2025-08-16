@@ -47,7 +47,6 @@ jobs:
       - name: Verify kubectl authentication
         run: |
           kubectl auth whoami
-          kubectl get nodes
 
       - name: Deploy Auth PostgreSQL resources
         run: |
