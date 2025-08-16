@@ -16,6 +16,7 @@ jobs:
       contents: "read"
       id-token: "write"
     runs-on: ubuntu-latest
+    environment: secrets
 
     steps:
       - name: Checkout repo
@@ -32,10 +33,7 @@ jobs:
 
       - name: Configure EKS cluster access
         run: |
-          aws eks update-kubeconfig \
-          
-            --name ${{ secrets.EKS_CLUSTER_NAME }} \
-            --region ${{ secrets.AWS_REGION }} 
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }} 
           
           kubectl cluster-info
           kubectl auth whoami
