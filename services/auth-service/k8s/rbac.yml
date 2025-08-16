@@ -11,9 +11,44 @@ metadata:
   name: github-actions-cluster-binding
 subjects:
   - kind: User
-    name: system:node:EKSGetTokenAuth  # Matches the user in your output
+    name: system:node:GitHubActions  # Match the actual username from kubectl auth whoami
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
-  name: edit  # Using built-in edit cluster role
+  name: cluster-admin  # Use cluster-admin for full permissions
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Alternative: More restrictive permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: github-actions-deployer
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets", "serviceaccounts", "namespaces"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "daemonsets", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings", "roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+# If you prefer more restrictive permissions, use this binding instead
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: github-actions-deployer-binding
+subjects:
+  - kind: User
+    name: system:node:GitHubActions
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: github-actions-deployer  # Use the custom role above
   apiGroup: rbac.authorization.k8s.io
