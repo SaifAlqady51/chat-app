@@ -37,8 +37,8 @@ jobs:
           
             --region ${{ secrets.AWS_REGION }} \
             --name ${{ secrets.EKS_CLUSTER_NAME }} \
-            --role-arn ${{ secrets.AWS_IAM_ROLE_ARN }}
           
+          kubectl cluster-info
           kubectl auth whoami
           kubectl get ns  
 
