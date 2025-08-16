@@ -36,7 +36,7 @@ jobs:
           aws eks update-kubeconfig \
           
             --region ${{ secrets.AWS_REGION }} \
-            --name ${{ secrets.EKS_CLUSTER_NAME }} \
+            --name ${{ secrets.EKS_CLUSTER_NAME }} 
           
           kubectl cluster-info
           kubectl auth whoami
