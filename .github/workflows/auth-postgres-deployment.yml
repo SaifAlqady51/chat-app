@@ -33,22 +33,46 @@ jobs:
 
       - name: Configure EKS cluster access
         run: |
-          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }} 
-          
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
           kubectl cluster-info
           kubectl auth whoami
-          kubectl get ns  
 
       - name: Setup RBAC
-        run: |
-          kubectl apply -f services/auth-service/k8s/rbac.yml
-        continue-on-error: true
+        run: kubectl apply -f services/auth-service/k8s/rbac.yml
 
-      - name: Verify kubectl authentication
+      - name: Check cluster resources before deployment
         run: |
-          kubectl auth whoami
+          echo "=== Node Status ==="
+          kubectl get nodes -o wide
+          echo "=== Available Resources ==="
+          kubectl top nodes || echo "Metrics server not available"
+          echo "=== Storage Classes ==="
+          kubectl get storageclass
 
       - name: Deploy Auth PostgreSQL resources
         run: |
           kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
-          kubectl rollout status deployment/auth-postgres --timeout=300s
+          
+          # Wait for deployment with better monitoring
+          echo "Waiting for PostgreSQL deployment..."
+          kubectl rollout status deployment/auth-postgres --timeout=600s
+
+      - name: Verify deployment success
+        run: |
+          echo "=== Final Status ==="
+          kubectl get pods -l app=auth-postgres
+          kubectl get svc auth-postgres
+          
+          # Test database connectivity (optional)
+          kubectl run postgres-test --rm -i --restart=Never --image=postgres:15 -- \
+            psql -h auth-postgres -U postgres -c "SELECT version();" || echo "Connection test failed"
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "=== Deployment Failed - Debugging ==="
+          kubectl get deployments -l app=auth-postgres
+          kubectl get pods -l app=auth-postgres -o wide
+          kubectl describe pods -l app=auth-postgres
+          kubectl logs -l app=auth-postgres --tail=100 --previous=false
+          kubectl get events --sort-by=.metadata.creationTimestamp | tail -20
