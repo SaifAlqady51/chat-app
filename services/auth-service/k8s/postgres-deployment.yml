@@ -12,6 +12,12 @@ spec:
       labels:
         app: auth-postgres
     spec:
+      # Add toleration for the CriticalAddonsOnly taint
+      tolerations:
+        - key: "CriticalAddonsOnly"
+          operator: "Exists"
+          effect: "NoSchedule"
+
       containers:
         - name: auth-postgres
           image: postgres:13-alpine
@@ -24,9 +30,20 @@ spec:
               value: password
           ports:
             - containerPort: 5432
+
+          # Add resource requests/limits for better scheduling
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
           volumeMounts:
             - mountPath: /var/lib/postgresql/data
               name: auth-postgres-storage
+
       volumes:
         - name: auth-postgres-storage
           emptyDir: {}
