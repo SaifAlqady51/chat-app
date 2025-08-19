@@ -1,3 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: auth-postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,7 +25,6 @@ spec:
       labels:
         app: auth-postgres
     spec:
-      # Removed toleration - let Kubernetes schedule on untainted nodes
       containers:
         - name: auth-postgres
           image: postgres:13-alpine
@@ -27,32 +37,34 @@ spec:
               value: password
           ports:
             - containerPort: 5432
-
-          # Minimal resources for testing
           resources:
-            requests:
-              memory: "64Mi"   # Very low for testing
-              cpu: "50m"       # Very low for testing
             limits:
-              memory: "256Mi"
-              cpu: "200m"
-
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
           volumeMounts:
             - mountPath: /var/lib/postgresql/data
               name: auth-postgres-storage
-
-          # Simple health check
           readinessProbe:
             tcpSocket:
               port: 5432
-            initialDelaySeconds: 10
-            periodSeconds: 5
-
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
       volumes:
         - name: auth-postgres-storage
           persistentVolumeClaim:
             claimName: auth-postgres-pvc
-
 ---
 apiVersion: v1
 kind: Service
