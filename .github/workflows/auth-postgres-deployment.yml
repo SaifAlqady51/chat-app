@@ -5,7 +5,6 @@ on:
     branches: ["*"]
     paths:
       - 'services/auth-service/k8s/postgres-deployment.yml'
-      - 'services/auth-service/k8s/rbac.yml'
   workflow_dispatch:
   pull_request:
 
@@ -33,18 +32,8 @@ jobs:
 
       - name: Configure EKS cluster access
         run: |
-          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }} 
-          
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
           kubectl cluster-info
-          kubectl auth whoami
-          kubectl get ns  
-
-      - name: Setup RBAC
-        run: |
-          kubectl apply -f services/auth-service/k8s/rbac.yml
-
-      - name: Verify kubectl authentication
-        run: |
           kubectl auth whoami
 
       - name: Deploy Auth PostgreSQL resources
