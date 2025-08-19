@@ -63,7 +63,7 @@ jobs:
 
       - name: Wait for rollout with extended timeout and better error handling
         run: |
-          kubectl rollout status deployment/auth-postgres --timeout=600s || {
+          kubectl rollout status deployment/auth-postgres --timeout=180s || {
             echo "Rollout failed, checking final status..."
             kubectl get deployment auth-postgres -o yaml
             kubectl describe deployment auth-postgres
