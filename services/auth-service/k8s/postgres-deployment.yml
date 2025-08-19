@@ -50,7 +50,8 @@ spec:
 
       volumes:
         - name: auth-postgres-storage
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: auth-postgres-pvc
 
 ---
 apiVersion: v1
