@@ -8,12 +8,13 @@ metadata:
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: github-actions-deployment-role
+  namespace: default
 rules:
   - apiGroups: [""]
-    resources: ["pods", "services", "configmaps", "secrets", "persistentvolumeclaims", "namespaces"]
+    resources: ["pods", "services", "configmaps", "secrets", "persistentvolumeclaims"]
     verbs: ["get", "list", "create", "update", "patch", "delete"]
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets"]
@@ -24,14 +25,15 @@ rules:
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   name: github-actions-deployment-binding
+  namespace: default
 subjects:
   - kind: ServiceAccount
     name: github-actions-sa
     namespace: default
 roleRef:
-  kind: ClusterRole
+  kind: Role
   name: github-actions-deployment-role
   apiGroup: rbac.authorization.k8s.io
