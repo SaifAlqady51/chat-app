@@ -53,7 +53,7 @@ jobs:
 
       - name: Deploy PostgreSQL PVC
         run: |
-          kubectl apply -f services/auth-service/k8s/postgres-pvc.yml --server-side
+          kubectl apply -f services/auth-service/k8s/postgres-pvc.yml 
           # Wait for PVC to be bound
           timeout 60 kubectl wait --for=condition=bound pvc/auth-postgres-pvc || echo "PVC not bound yet"
 
