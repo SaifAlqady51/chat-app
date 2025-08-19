@@ -56,8 +56,12 @@ jobs:
           echo "Waiting for pods to terminate..."
           kubectl wait --for=delete pod -l app=auth-postgres --timeout=120s || true
           
-          # Now delete the PVC
+          # Delete all possible PVC variants
           kubectl delete pvc auth-postgres-pvc --ignore-not-found=true --timeout=120s || true
+          kubectl delete pvc auth-postgres-pvc-v2 --ignore-not-found=true --timeout=120s || true
+          
+          # Clean up any PVCs with the auth-postgres label
+          kubectl delete pvc -l app=auth-postgres --ignore-not-found=true --timeout=120s || true
           
           # Wait a bit more to ensure cleanup is complete
           sleep 15
@@ -65,7 +69,7 @@ jobs:
           # Verify cleanup
           echo "=== Verifying cleanup ==="
           kubectl get deployment auth-postgres || echo "✓ Deployment deleted"
-          kubectl get pvc auth-postgres-pvc || echo "✓ PVC deleted"
+          kubectl get pvc -l app=auth-postgres || echo "✓ All auth-postgres PVCs deleted"
           kubectl get pods -l app=auth-postgres || echo "✓ No pods remaining"
 
       - name: Deploy PostgreSQL PVC
