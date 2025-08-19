@@ -39,4 +39,33 @@ jobs:
       - name: Deploy Auth PostgreSQL resources
         run: |
           kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
-          kubectl rollout status deployment/auth-postgres --timeout=300s
+
+      - name: Debug deployment status
+        if: always()
+        run: |
+          echo "=== Deployment Status ==="
+          kubectl get deployment auth-postgres -o wide
+          
+          echo "=== Pod Status ==="
+          kubectl get pods -l app=auth-postgres -o wide
+          
+          echo "=== ReplicaSet Status ==="
+          kubectl get rs -l app=auth-postgres
+          
+          echo "=== Recent Events ==="
+          kubectl get events --sort-by=.metadata.creationTimestamp --field-selector involvedObject.name=auth-postgres
+          
+          echo "=== Pod Logs (if any pods exist) ==="
+          for pod in $(kubectl get pods -l app=auth-postgres -o jsonpath='{.items[*].metadata.name}'); do
+            echo "--- Logs for $pod ---"
+            kubectl logs $pod --previous || kubectl logs $pod || echo "No logs available"
+          done
+
+      - name: Wait for rollout with extended timeout and better error handling
+        run: |
+          kubectl rollout status deployment/auth-postgres --timeout=600s || {
+            echo "Rollout failed, checking final status..."
+            kubectl get deployment auth-postgres -o yaml
+            kubectl describe deployment auth-postgres
+            exit 1
+          }
