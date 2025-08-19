@@ -5,6 +5,7 @@ on:
     branches: ["*"]
     paths:
       - 'services/auth-service/k8s/postgres-deployment.yml'
+      - 'services/auth-service/k8s/postgres-pvc.yml'
   workflow_dispatch:
   pull_request:
 
@@ -36,67 +37,65 @@ jobs:
           kubectl cluster-info
           kubectl auth whoami
 
-      - name: Deploy Auth PostgreSQL resources
+      - name: Check existing resources
+        run: |
+          echo "=== Current PVCs ==="
+          kubectl get pvc --all-namespaces || true
+          
+          echo "=== Storage Classes ==="
+          kubectl get storageclass || true
+
+      - name: Clean up previous failed deployment
+        run: |
+          kubectl delete deployment auth-postgres --ignore-not-found=true --timeout=60s || true
+          kubectl delete pvc auth-postgres-pvc --ignore-not-found=true --timeout=60s || true
+          sleep 10
+
+      - name: Deploy PostgreSQL PVC
+        run: |
+          kubectl apply -f services/auth-service/k8s/postgres-pvc.yml --server-side
+          # Wait for PVC to be bound
+          timeout 60 kubectl wait --for=condition=bound pvc/auth-postgres-pvc || echo "PVC not bound yet"
+
+      - name: Deploy PostgreSQL Deployment
         run: |
           kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
 
-      - name: Debug deployment status
-        if: always()
+      - name: Wait for rollout with debugging
         run: |
-          echo "=== Deployment Status ==="
-          kubectl get deployment auth-postgres -o wide
+          timeout 300 kubectl rollout status deployment/auth-postgres || {
+            echo "Rollout failed, investigating..."
           
-          echo "=== Pod Status ==="
-          kubectl get pods -l app=auth-postgres -o wide
+            echo "=== Pod Status ==="
+            kubectl get pods -l app=auth-postgres -o wide
           
-          echo "=== ReplicaSet Status ==="
-          kubectl get rs -l app=auth-postgres
+            echo "=== Pod Details ==="
+            for pod in $(kubectl get pods -l app=auth-postgres -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo ""); do
+              echo "--- Describing pod $pod ---"
+              kubectl describe pod $pod
+              echo "--- Logs for $pod ---"
+              kubectl logs $pod --previous || kubectl logs $pod || echo "No logs available"
+            done
           
-          echo "=== Recent Events ==="
-          kubectl get events --sort-by=.metadata.creationTimestamp --field-selector involvedObject.name=auth-postgres
+            echo "=== PVC Status ==="
+            kubectl describe pvc auth-postgres-pvc
           
-          echo "=== Pod Logs (if any pods exist) ==="
-          for pod in $(kubectl get pods -l app=auth-postgres -o jsonpath='{.items[*].metadata.name}'); do
-            echo "--- Logs for $pod ---"
-            kubectl logs $pod --previous || kubectl logs $pod || echo "No logs available"
-          done
-
-      - name: Wait for rollout with extended timeout and better error handling
-        run: |
-          kubectl rollout status deployment/auth-postgres --timeout=180s || {
-            echo "Rollout failed, checking final status..."
-            kubectl get deployment auth-postgres -o yaml
-            kubectl describe deployment auth-postgres
+            echo "=== Events ==="
+            kubectl get events --field-selector involvedObject.name=auth-postgres --sort-by=.metadata.creationTimestamp
+          
             exit 1
           }
-          - name: Diagnose cluster state
-                 run: |
-                   echo "=== Node Information ==="
-                   kubectl get nodes -o wide
 
-                   echo "=== Node Taints ==="
-                   kubectl describe nodes | grep -A 5 "Taints:"
-
-                   echo "=== Available Resources ==="
-                   kubectl describe nodes | grep -A 10 "Allocated resources:"
-
-                   echo "=== Current Pods ==="
-                   kubectl get pods --all-namespaces
-
-                   echo "=== Events ==="
-                   kubectl get events --sort-by=.metadata.creationTimestamp | tail -20
-
-               - name: Try minimal deployment first
-                 run: |
-                   # Delete existing deployment
-                   kubectl delete deployment auth-postgres --ignore-not-found=true --timeout=60s
-
-                   # Apply new deployment
-                   kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
-
-                   # Monitor pod creation
-                   echo "Watching pod creation..."
-                   timeout 120 kubectl get pods -l app=auth-postgres -w || echo "Timeout reached"
-
-                   echo "Final pod status:"
-                   kubectl get pods -l app=auth-postgres -o wide
+      - name: Verify deployment success
+        run: |
+          echo "=== Final Deployment Status ==="
+          kubectl get deployment auth-postgres -o wide
+          
+          echo "=== Final Pod Status ==="
+          kubectl get pods -l app=auth-postgres -o wide
+          
+          echo "=== Service Status ==="
+          kubectl get svc -l app=auth-postgres
+          
+          echo "=== PVC Status ==="
+          kubectl get pvc auth-postgres-pvc
