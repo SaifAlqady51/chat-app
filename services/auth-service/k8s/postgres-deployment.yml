@@ -2,17 +2,24 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: auth-postgres
+  labels:
+    app: auth-postgres
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: auth-postgres
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0  # Ensure zero-downtime updates
   template:
     metadata:
       labels:
         app: auth-postgres
     spec:
-      # Add toleration for the CriticalAddonsOnly taint
+      # Keep the toleration if your nodes require it, but this might be the problem
       tolerations:
         - key: "CriticalAddonsOnly"
           operator: "Exists"
@@ -28,14 +35,16 @@ spec:
               value: postgres
             - name: POSTGRES_PASSWORD
               value: password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
 
-          # Add resource requests/limits for better scheduling
+          # Reduced resource requests for better scheduling
           resources:
             requests:
-              memory: "256Mi"
-              cpu: "250m"
+              memory: "128Mi"  # Reduced from 256Mi
+              cpu: "100m"      # Reduced from 250m
             limits:
               memory: "512Mi"
               cpu: "500m"
@@ -43,6 +52,43 @@ spec:
           volumeMounts:
             - mountPath: /var/lib/postgresql/data
               name: auth-postgres-storage
+
+          # Add health checks to ensure proper startup
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U postgres -d auth_db
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U postgres -d auth_db
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # Graceful shutdown configuration
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/bash
+                  - -c
+                  - |
+                    # Gracefully stop PostgreSQL
+                    pg_ctl stop -D ${PGDATA} -m smart || true
+
+      # Increase grace period for PostgreSQL shutdown
+      terminationGracePeriodSeconds: 60
 
       volumes:
         - name: auth-postgres-storage
@@ -53,10 +99,14 @@ apiVersion: v1
 kind: Service
 metadata:
   name: auth-postgres
+  labels:
+    app: auth-postgres
 spec:
+  type: ClusterIP
   selector:
     app: auth-postgres
   ports:
-    - protocol: TCP
+    - name: postgres
+      protocol: TCP
       port: 5432
       targetPort: 5432

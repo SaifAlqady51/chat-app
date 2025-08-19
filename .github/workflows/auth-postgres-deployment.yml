@@ -69,3 +69,34 @@ jobs:
             kubectl describe deployment auth-postgres
             exit 1
           }
+          - name: Diagnose cluster state
+                 run: |
+                   echo "=== Node Information ==="
+                   kubectl get nodes -o wide
+
+                   echo "=== Node Taints ==="
+                   kubectl describe nodes | grep -A 5 "Taints:"
+
+                   echo "=== Available Resources ==="
+                   kubectl describe nodes | grep -A 10 "Allocated resources:"
+
+                   echo "=== Current Pods ==="
+                   kubectl get pods --all-namespaces
+
+                   echo "=== Events ==="
+                   kubectl get events --sort-by=.metadata.creationTimestamp | tail -20
+
+               - name: Try minimal deployment first
+                 run: |
+                   # Delete existing deployment
+                   kubectl delete deployment auth-postgres --ignore-not-found=true --timeout=60s
+
+                   # Apply new deployment
+                   kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
+
+                   # Monitor pod creation
+                   echo "Watching pod creation..."
+                   timeout 120 kubectl get pods -l app=auth-postgres -w || echo "Timeout reached"
+
+                   echo "Final pod status:"
+                   kubectl get pods -l app=auth-postgres -o wide
