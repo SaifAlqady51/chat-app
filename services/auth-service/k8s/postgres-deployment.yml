@@ -64,7 +64,7 @@ spec:
       volumes:
         - name: auth-postgres-storage
           persistentVolumeClaim:
-            claimName: auth-postgres-pvc
+            claimName: auth-postgres-pvc-v2
 ---
 apiVersion: v1
 kind: Service

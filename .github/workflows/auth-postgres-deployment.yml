@@ -47,19 +47,44 @@ jobs:
 
       - name: Clean up previous failed deployment
         run: |
-          kubectl delete deployment auth-postgres --ignore-not-found=true --timeout=60s || true
-          kubectl delete pvc auth-postgres-pvc --ignore-not-found=true --timeout=60s || true
-          sleep 10
+          echo "Cleaning up existing resources..."
+          
+          # Delete deployment first (this will stop using the PVC)
+          kubectl delete deployment auth-postgres --ignore-not-found=true --timeout=120s || true
+          
+          # Wait for pods to be terminated
+          echo "Waiting for pods to terminate..."
+          kubectl wait --for=delete pod -l app=auth-postgres --timeout=120s || true
+          
+          # Now delete the PVC
+          kubectl delete pvc auth-postgres-pvc --ignore-not-found=true --timeout=120s || true
+          
+          # Wait a bit more to ensure cleanup is complete
+          sleep 15
+          
+          # Verify cleanup
+          echo "=== Verifying cleanup ==="
+          kubectl get deployment auth-postgres || echo "✓ Deployment deleted"
+          kubectl get pvc auth-postgres-pvc || echo "✓ PVC deleted"
+          kubectl get pods -l app=auth-postgres || echo "✓ No pods remaining"
 
       - name: Deploy PostgreSQL PVC
         run: |
-          kubectl apply -f services/auth-service/k8s/postgres-pvc.yml 
+          echo "Creating PVC..."
+          kubectl apply -f services/auth-service/k8s/postgres-pvc.yml
+          
           # Wait for PVC to be bound
-          timeout 60 kubectl wait --for=condition=bound pvc/auth-postgres-pvc || echo "PVC not bound yet"
+          echo "Waiting for PVC to be bound..."
+          timeout 120 kubectl wait --for=condition=bound pvc/auth-postgres-pvc || {
+            echo "PVC not bound, checking status..."
+            kubectl describe pvc auth-postgres-pvc
+            exit 1
+          }
 
       - name: Deploy PostgreSQL Deployment
         run: |
-          kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
+          echo "Creating deployment..."
+          kubectl apply -f services/auth-service/k8s/postgres-deployment.yml
 
       - name: Wait for rollout with debugging
         run: |
