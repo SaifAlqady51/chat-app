@@ -63,8 +63,7 @@ spec:
             failureThreshold: 3
       volumes:
         - name: auth-postgres-storage
-          persistentVolumeClaim:
-            claimName: auth-postgres-pvc
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
