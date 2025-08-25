@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: auth-postgres
+  labels:
+    app: auth-postgres
 spec:
   replicas: 1
   selector:
@@ -24,13 +26,41 @@ spec:
               value: password
           ports:
             - containerPort: 5432
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
           volumeMounts:
             - mountPath: /var/lib/postgresql/data
               name: auth-postgres-storage
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+      tolerations:
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 300
       volumes:
         - name: auth-postgres-storage
           emptyDir: {}
-
 ---
 apiVersion: v1
 kind: Service

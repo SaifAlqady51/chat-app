@@ -15,6 +15,7 @@ jobs:
       contents: "read"
       id-token: "write"
     runs-on: ubuntu-latest
+    environment: secrets
 
     steps:
       - name: Checkout repo
@@ -27,27 +28,82 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v4
 
       - name: Configure EKS cluster access
         run: |
-          aws eks update-kubeconfig \
-            --region ${{ secrets.AWS_REGION }} \
-            --name ${{ secrets.EKS_CLUSTER_NAME }} \
-            --role-arn ${{ secrets.AWS_IAM_ROLE_ARN }}
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
+          kubectl cluster-info
+          kubectl auth whoami
 
-      - name: Load Auth PostgreSQL secrets
+      - name: Wait for nodes to be ready
         run: |
-          aws secretsmanager get-secret-value \
-            --secret-id ${{ secrets.AUTH_POSTGRES_SECRETS_NAME }} \
-            --query SecretString \
-            --output text | jq -r 'to_entries|map("\(.key)=\(.value)")|.[]' > auth-postgres.env
+          echo "Waiting for at least one node to be ready..."
+          timeout 300 bash -c 'until kubectl get nodes 2>/dev/null | grep -q " Ready "; do echo "Waiting for nodes..."; sleep 10; done' || {
+            echo "No nodes became ready in time"
+            echo "Checking Karpenter node provisioning..."
+            kubectl get nodeclaims 2>/dev/null || echo "No nodeclaims found"
+            kubectl get nodes 2>/dev/null || echo "Cannot list nodes"
+            echo "Continuing anyway - pod might still schedule..."
+          }
+
+      - name: Create PostgreSQL secret if not exists
+        run: |
+          if ! kubectl get secret postgres-secret &>/dev/null; then
+            echo "Creating postgres secret..."
+            kubectl create secret generic postgres-secret \
+              --from-literal=password=${{ secrets.POSTGRES_PASSWORD }}
+          else
+            echo "Secret already exists"
+          fi
+
+      - name: Clean up previous deployment
+        run: |
+          echo "Cleaning up existing resources..."
+          kubectl delete deployment auth-postgres --ignore-not-found=true --timeout=120s || true
+          kubectl wait --for=delete pod -l app=auth-postgres --timeout=120s || true
+          sleep 10
+
+      - name: Deploy PostgreSQL
+        run: |
+          echo "Creating deployment..."
+          # Apply and ignore PVC errors (will be removed from deployment file)
+          kubectl apply -f services/auth-service/k8s/postgres-deployment.yml || {
+            echo "Some resources failed to create (likely PVC permissions)"
+            echo "Checking if deployment was created..."
+            kubectl get deployment auth-postgres && echo "Deployment created successfully despite PVC error"
+          }
+
+      - name: Wait for rollout
+        run: |
+          timeout 300 kubectl rollout status deployment/auth-postgres || {
+            echo "Rollout failed, investigating..."
           
-          kubectl create secret generic auth-postgres-secrets \
-            --from-env-file=auth-postgres.env \
-            --dry-run=client -o yaml | kubectl apply -f -
+            echo "=== Pod Status ==="
+            kubectl get pods -l app=auth-postgres -o wide
+          
+            echo "=== Pod Details (Critical for Pending status) ==="
+            for pod in $(kubectl get pods -l app=auth-postgres -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo ""); do
+              echo "--- Describing pod $pod ---"
+              kubectl describe pod $pod
+              echo ""
+            done
+          
+            echo "=== Recent Events ==="
+            kubectl get events --sort-by=.metadata.creationTimestamp | tail -20
+          
+            echo "=== Deployment Status ==="
+            kubectl get deployment auth-postgres -o yaml
+          
+            echo "=== ReplicaSet Status ==="
+            kubectl get rs -l app=auth-postgres -o wide
+          
+            exit 1
+          }
 
-      - name: Deploy Auth PostgreSQL resources
+      - name: Verify deployment success
         run: |
-          kubectl apply -f services/auth-service/k8s/postgres-deployment.yml --server-side
-          kubectl rollout status deployment/auth-postgres --timeout=90s
+          echo "=== Final Status ==="
+          kubectl get deployment auth-postgres -o wide
+          kubectl get pods -l app=auth-postgres -o wide
+          kubectl get svc -l app=auth-postgres
