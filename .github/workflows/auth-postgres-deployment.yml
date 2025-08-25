@@ -1,4 +1,4 @@
-name: Deploy Auth PostgreSQL to EKS (No PVC)
+name: Deploy Auth PostgreSQL to EKS
 
 on:
   push:
