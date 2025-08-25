@@ -36,6 +36,17 @@ jobs:
           kubectl cluster-info
           kubectl auth whoami
 
+      - name: Wait for nodes to be ready
+        run: |
+          echo "Waiting for at least one node to be ready..."
+          timeout 300 bash -c 'until kubectl get nodes 2>/dev/null | grep -q " Ready "; do echo "Waiting for nodes..."; sleep 10; done' || {
+            echo "No nodes became ready in time"
+            echo "Checking Karpenter node provisioning..."
+            kubectl get nodeclaims 2>/dev/null || echo "No nodeclaims found"
+            kubectl get nodes 2>/dev/null || echo "Cannot list nodes"
+            echo "Continuing anyway - pod might still schedule..."
+          }
+
       - name: Create PostgreSQL secret if not exists
         run: |
           if ! kubectl get secret postgres-secret &>/dev/null; then
